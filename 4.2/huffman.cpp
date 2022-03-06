@@ -6,15 +6,25 @@ template <class Type>
 class CharTypeMap;
 
 class Node {
+    // узел дерева
+    // есть два наследника - лист и внутренний узел
+    // в листьях хранятся кодируемые символы
+    // код формируется при обходе (walk)
     public:
         virtual void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes) = 0;
+
+        // используется, чтбы проверить яляется ли корень дерева листом
         virtual bool is_leaf() = 0;
 };
 
 class Leaf : public Node {
     public:
     	Leaf(char l) : letter(l) {}
+
+        // Leaf::walk необходмио определить после определения CharTypeMap
+        // поэтому определение ниже
         void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes);
+
         bool is_leaf() {return 1;}
     private:
         char letter;
@@ -23,7 +33,8 @@ class Leaf : public Node {
 class InnerNode : public Node {
     public:
         InnerNode(Node *l, Node *r) : left(l), right(r) {} 
-        void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes){
+
+        void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes) {
             cur_code_len++;
             cur_code[cur_code_len] = '\0';
             cur_code[cur_code_len-1] = '0';
@@ -31,8 +42,9 @@ class InnerNode : public Node {
             cur_code[cur_code_len-1] = '1';
             right -> walk(cur_code, cur_code_len, codes);
 		}
+
         bool is_leaf() {return 0;}
-    private:
+    //private:
         Node *left;
         Node *right;
 };
@@ -126,13 +138,13 @@ class PriorityQueue {
             // корректно в силу того, что && - ленивая опреация
             return (head != NULL) && (head -> next != NULL); 
         }
-
+        /*
         void debugLeavesPrint() {
             for(NodeFreqListElement *cur = head; cur != NULL; cur = cur -> next) {
                 std::cout << cur -> nf -> freq << '\n';
             }
         }
-
+        */
     private:
         NodeFreqListElement * head;
 
@@ -179,6 +191,13 @@ class CharTypeMap {
             }
         }
 
+        ~CharTypeMap() {
+            for(int i = 0; i < ALPHABET_SIZE; ++i) {
+                if(values[i] != NULL)
+                    delete values[i];
+            }
+        }
+
         Type * get(char letter) {
             return values[getIndex(letter)]; // ! возвращаю копию, но не уверен, что так надо
         }
@@ -212,7 +231,6 @@ class CharTypeMap {
         }
 };
 
-
 PriorityQueue * MapToPQ(CharTypeMap<NodeFreq>& cnf) {
     PriorityQueue *pq = new PriorityQueue();
     for(int i = 0; i < ALPHABET_SIZE; ++i) {
@@ -243,20 +261,7 @@ CharTypeMap<NodeFreq> * getCharNodeFreqMap(char * initial_string) {
     return charNodeFreqMap;
 }
 
-/*
-PriorityQueue * init_pq_with_leaves(char * initial_string) {
-    // ! хорошо бы весь цикл завернуть в отдельную функцию
-    CharTypeMap<NodeFreq> *charNodeFreqMap = getCharNodeFreqMap(initial_string);
 
-    // можно при считывани букв сразу заполнять очередь с приоритетами
-    // это будет эффективнее по времени, но мне неочень нравится неявное изменение частот
-    // поэтому создание и заполнение очереди с приоритетом из словаря выделяю в отдельный цикл
-    //PriorityQueue* pq = MapToPQ(charNodeFreqMap);
-    //charNodeFreqMap.print(); // debug
-    
-    return MapToPQ(*charNodeFreqMap);
-}
-*/
 NodeFreq * makeTreeFromLeaves(PriorityQueue *pq) {
     while(pq -> hasAtLeast2Elems()) {
         NodeFreq *left_nf = pq -> extractMin();
@@ -266,10 +271,24 @@ NodeFreq * makeTreeFromLeaves(PriorityQueue *pq) {
         short parent_freq = left_nf -> freq + right_nf -> freq;
 
         NodeFreq *parent_nf = new NodeFreq(parent, parent_freq);
-        
-        // ! здесь нужно корректно удалить left_nf и right_nf
 
         pq -> insert(parent_nf);
+
+        bool left_is_leaf = left_nf -> node -> is_leaf(); 
+        bool right_is_leaf = right_nf -> node -> is_leaf(); 
+        left_nf -> node = NULL;
+        right_nf -> node = NULL;
+
+        // удаление производится так странно, потому что
+        // * вершины дерева удалять нельзя, они нам нужны для постороения дерева
+        //   и будут удалены функцией deleteTree()
+        // * NodeFreq, храняще листья, хранятся в словаре, и будут удалены вместе с ним
+        //   словарь был нудн для подсчета чатот и будет нужен в конце программы для вычисления лины закодиованной строки
+        if (!left_is_leaf)
+            delete left_nf;
+
+        if (!right_is_leaf)
+            delete right_nf;
     }
     
     return pq -> extractMin();
@@ -294,13 +313,6 @@ CharTypeMap<char *> * get_letter_encoder(Node * root) {
     CharTypeMap<char *> *codes = new CharTypeMap<char *>;
     
     if(root -> is_leaf()) {
-        /*
-        char **code_ptr_ptr = new char *;
-        *code_ptr_ptr = new char[2];
-        *code_ptr_ptr[0] = '0';
-        *code_ptr_ptr[1] = '\0';
-        codes -> set(((Leaf)(*root)).letter, code_ptr_ptr);
-        */
        char code_buffer[] = "0";
        root -> walk(code_buffer,1,codes);
        return codes;
@@ -333,32 +345,52 @@ int get_encoded_len(CharTypeMap<NodeFreq> *charNodeFreqMap, CharTypeMap<char *> 
     return encoded_len;
 }
 
+
+void delete_Tree(Node *root) {
+    if(!(root -> is_leaf())) {
+        InnerNode* r = (InnerNode*)root;
+        delete_Tree(r -> left);
+        delete_Tree(r -> right);
+    }
+    delete root;
+}
+
+
 int main() {
     // если бы я хранил частоты в дереве,
     // можно было бы в процессе получения кодирующего словаря
     // получить и длину зкаодированной строки
-    // как произведение freq и cur_code_len для каждого узла 
+    // как произведение freq и cur_code_len для каждого узла
+
+    // известно, что в исходной строке не более 10^4 символов
 	char initial_string[10001];
 	
 	std::cin.getline(initial_string,10001);
+
+    // можно при считывани букв сразу заполнять очередь с приоритетами
+    // это будет эффективнее по времени, но мне не нравится неявное изменение частот
+    // поэтому создание и заполнение очереди с приоритетом в отдельную функцию MapToPQ
     CharTypeMap<NodeFreq> *charNodeFreqMap = getCharNodeFreqMap(initial_string);
     PriorityQueue *pq = MapToPQ(*charNodeFreqMap);
 
-	//PriorityQueue *pq = init_pq_with_leaves(initial_string);
     //pq -> debugLeavesPrint();
 
     NodeFreq * root_nf = makeTreeFromLeaves(pq);
     Node* root = root_nf -> node;
 
-        
-    /*
-    Leaf* lll = (Leaf *)((InnerNode *) root) -> right;
-    std::cout << "leter" << lll -> letter << '\n';
-    */
     CharTypeMap<char *> *codes = get_letter_encoder(root);
 
     std::cout << codes -> count_chars() << ' ' << get_encoded_len(charNodeFreqMap, codes);
     std::cout << '\n';
     codes -> print();
     print_coded_string(initial_string,codes);
+    delete pq; // по идее здесь pq должен быть пуст
+    
+    delete_Tree(root);
+    delete charNodeFreqMap;
+
+    // ! нужно для CharTypeMap<char *> определить свой  деструктор:
+    // удалять строки (массивы char), а не указатели на строки (char**)
+    // не знаю, возможно ли определить деструктор для конкретнго типа
+    delete codes;
 }

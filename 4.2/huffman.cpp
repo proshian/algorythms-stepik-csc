@@ -191,12 +191,8 @@ class CharTypeMap {
             }
         }
 
-        ~CharTypeMap() {
-            for(int i = 0; i < ALPHABET_SIZE; ++i) {
-                if(values[i] != NULL)
-                    delete values[i];
-            }
-        }
+        // определение ниже
+        ~CharTypeMap();
 
         Type * get(char letter) {
             return values[getIndex(letter)]; // ! возвращаю копию, но не уверен, что так надо
@@ -230,6 +226,28 @@ class CharTypeMap {
             return letter - 'a';
         }
 };
+
+
+
+template <class Type>
+CharTypeMap<Type>::~CharTypeMap() {
+    for(int i = 0; i < ALPHABET_SIZE; ++i) {
+        if(values[i] != NULL)
+            delete values[i];
+    }
+}
+
+template<>
+CharTypeMap<char *>::~CharTypeMap() {
+    for(int i = 0; i < ALPHABET_SIZE; ++i) {
+        if(values[i] != NULL) {
+            char * code = *values[i];
+            delete [] code;
+        }
+        delete values[i];
+        values[i] = NULL;
+    }
+}
 
 PriorityQueue * MapToPQ(CharTypeMap<NodeFreq>& cnf) {
     PriorityQueue *pq = new PriorityQueue();
@@ -389,8 +407,6 @@ int main() {
     delete_Tree(root);
     delete charNodeFreqMap;
 
-    // ! нужно для CharTypeMap<char *> определить свой  деструктор:
-    // удалять строки (массивы char), а не указатели на строки (char**)
-    // не знаю, возможно ли определить деструктор для конкретнго типа
+    // ! нужно для CharTypeMap<char *> определен свой  деструктор
     delete codes;
 }

@@ -1,66 +1,163 @@
 #include <iostream>
-#include <cstdio>
 #include <cstring>
+#define ALPHABET_SIZE 26
+
+template <class Type>
+class CharTypeMap;
 
 class Node {
-    virtual char *walk() = 0; // ! определить 
+    public:
+        virtual void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes) = 0;
+        virtual bool is_leaf() = 0;
 };
 
 class Leaf : public Node {
     public:
     	Leaf(char l) : letter(l) {}
-        char *walk();
+        void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes);
+        bool is_leaf() {return 1;}
     private:
         char letter;
 };
 
 class InnerNode : public Node {
     public:
-        char *walk();
+        InnerNode(Node *l, Node *r) : left(l), right(r) {} 
+        void walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes){
+            cur_code_len++;
+            cur_code[cur_code_len] = '\0';
+            cur_code[cur_code_len-1] = '0';
+            left -> walk(cur_code, cur_code_len, codes);
+            cur_code[cur_code_len-1] = '1';
+            right -> walk(cur_code, cur_code_len, codes);
+		}
+        bool is_leaf() {return 0;}
     private:
         Node *left;
         Node *right;
 };
 
 struct NodeFreq {
+
+    ~NodeFreq() {
+        // а не вызовется ли оно само?
+        delete node;
+    }
+
     NodeFreq() {
         node = NULL;
         freq = 0;
     }
+
 	NodeFreq(Node *n, short f = 1) : node(n), freq(f){}
+
+    friend std::ostream& operator << (std::ostream &out, const NodeFreq &nf);
+
 	Node *node;
 	short freq;
 };
 
+std::ostream& operator << (std::ostream &out, const NodeFreq &nf) {
+	out << "freq: " << nf.freq;
+	return out;
+}
+
+
 
 struct NodeFreqListElement {
-    NodeFreqListElement(NodeFreq _nf, NodeFreqListElement *_next = NULL) : nf(_nf), next(_next){}
-    NodeFreq nf;
+    NodeFreqListElement(NodeFreq *_nf, NodeFreqListElement *_next = NULL) : nf(_nf), next(_next){}
+
+    ~NodeFreqListElement() {
+        delete nf;
+    }
+
+    NodeFreq *nf;
     NodeFreqListElement *next;
 };
-/*
-class NodeFreqList {
-    public:
-        void append(NodeFreq nf) {
-            head = new NodeFreqListElement(nf, head);
-        }
-        NodeFreqListElement * next(NodeFreqListElement * cur) {
-            return 
-        } 
-    private:
-        NodeFreqListElement *head;
-};
-*/
+
 
 class PriorityQueue {
     public:
         PriorityQueue() {head = NULL;}
-        void insert();
-        NodeFreq extractMin();
-        bool hasAtLeast2Elems();
+
+        ~PriorityQueue() {
+            while(head) {
+                NodeFreqListElement *new_head = head -> next;
+                delete head;
+                head = new_head;
+            }
+        }
+
+        void insert(NodeFreq *nf) {
+            head = new NodeFreqListElement(nf, head);
+        }
+
+        NodeFreq *extractMin() { // нужно удалять элемент из списка
+            if(head == NULL) {
+                // сюда мы не можем зайти, но  решил обаботать
+                return NULL;
+            }
+
+            int min_freq = 10001;
+            NodeFreq *min_nf = NULL;
+
+            // предыдущий элемент списка, относительно cur
+            NodeFreqListElement *prev = NULL;
+
+            // предыдущий элемент списка, относительно элемента с минимальной частотой
+            NodeFreqListElement *prev_min = NULL;
+
+            for(NodeFreqListElement *cur = head; cur != NULL; cur = cur -> next) {
+                int cur_freq = cur -> nf -> freq;
+                if(cur_freq < min_freq) {
+                    min_freq = cur_freq;
+                    min_nf = cur -> nf;
+                    prev_min = prev;
+                }
+                prev = cur;
+            }
+
+            if(head -> nf -> freq == min_freq)
+                return deleteHead();
+            return deleteNext(prev_min);
+        }
+
+        bool hasAtLeast2Elems() {
+            // корректно в силу того, что && - ленивая опреация
+            return (head != NULL) && (head -> next != NULL); 
+        }
+
+        void debugLeavesPrint() {
+            for(NodeFreqListElement *cur = head; cur != NULL; cur = cur -> next) {
+                std::cout << cur -> nf -> freq << '\n';
+            }
+        }
+
     private:
         NodeFreqListElement * head;
+
+        NodeFreq *deleteNext(NodeFreqListElement * prev) {
+            NodeFreqListElement *deleteme = prev -> next;
+            NodeFreq *extracted_nf = deleteme ->nf;
+
+            deleteme ->nf = NULL;
+
+            prev -> next = prev -> next -> next;
+            
+            delete deleteme;
+            return extracted_nf;
+        }
+
+        NodeFreq *deleteHead() {
+            NodeFreqListElement* old_head = head;
+            head = head -> next;
+            NodeFreq *extracted_nf = old_head -> nf;
+            old_head -> nf = NULL;
+            delete(old_head);
+            return extracted_nf;
+        }
 };
+
 
 template <class Type>
 class CharTypeMap {
@@ -71,94 +168,197 @@ class CharTypeMap {
     // будет использоваться:
     // * для конечного отображения буквы в набор символов 0 и 1
     //       Type = char *
-    // * при чтении исходной строки для формирования и временного хранения элементов NodeFreq
+    // * при инициализации очереди с проритетами листьями
+    //   для быстрой проверки наличия листа с данной буквой и нахождения такого листа 
     //       Type = NodeFreq
-    //       для этого представления было бы удобно добавить возможность инкрементирования 
-    //       частоты по set
-    //       также в обобщении возникает вопрос: как понять, 
-    //       что в ячейке записан мусор (буквы нет в кодируемой фразе)
-    //           * если Type = char* можно инициализировать массив NULL-ами
-    //           * если Type = NodeFreq, то такой проблемы не возникает, 
-    //             так как пр создании массива вызовется конструктор по умолчаию,
-    //             который сделает указатель на Node = NULL
-    //       я решил просто добавить массив задействованных символов (по сути строчку)
+    
     public:
         CharTypeMap() {
-            usedLettersCount = 0;
-            usedLetters[0] = '\0';
+            for(int i = 0; i < ALPHABET_SIZE; ++i) {
+                values[i] = NULL;
+            }
         }
 
-        Type get(char letter) {
+        Type * get(char letter) {
             return values[getIndex(letter)]; // ! возвращаю копию, но не уверен, что так надо
         }
+        
+        void set(char letter, Type *value) {
+            Type * & values_cell = values[getIndex(letter)]; 
+            if(values_cell == NULL)
+                values_cell = value;
+        }
+        
+        void print() {
+            for(int i = 0; i < ALPHABET_SIZE; ++i) {
+                char letter = 'a' + i;
+                if(values[i] != NULL)
+                	std::cout << letter << ": " << *values[i] << '\n';
+            }
+        }
 
-        
-        void set(char letter, Type value) { 
-            values[getIndex(letter)] =  value;
-            usedLetters[usedLettersCount++] = letter;
+        int count_chars() {
+            int count = 0;
+            for (int i = 0; i < ALPHABET_SIZE; ++i) {
+                if(values[i] != NULL)
+                    count++;
+            }
+            return count;
         }
-        
-        char * getUsedLetters() {
-            return usedLetters;
-        }
-
-        bool exists(char letter) {
-            for(int i = 0; i <= usedLettersCount)
-        }
-        
     private:
-        Type values[26];
-        char usedLetters[26];
-        int usedLettersCount;
+        Type *values[ALPHABET_SIZE];
         int getIndex(char letter) {
             return letter - 'a';
         }
 };
 
 
-NodeFreq * char_in_leaffreqlist(char letter, NodeFreq *list_of_leaves) {
-	// проверяет, есть ли в списке элемент, содержащий лист,
-    // хранящий переданный символ letter
-    // если да, возвращает этот лист
-    // иначе, возвращает NULL
-    
-    // эту функцию можно вызывать
-    // только если знаем, что все элементы list_of_leaves
-    // содержат именно листья, а не внутренние вершины
-    
-    return NULL;
+PriorityQueue * MapToPQ(CharTypeMap<NodeFreq>& cnf) {
+    PriorityQueue *pq = new PriorityQueue();
+    for(int i = 0; i < ALPHABET_SIZE; ++i) {
+        NodeFreq *nf = cnf.get('a'+i);
+        if(nf != NULL) {
+            pq -> insert(nf);
+        }
+    }
+    return pq;
 }
 
-NodeFreqListElement *get_nodefreqlist_of_leaves(char *c) {
-    NodeFreqListElement *head = NULL;
 
-	while (*c != '\0' && *c != '\n') {
-        
-		continue;
+CharTypeMap<NodeFreq> * getCharNodeFreqMap(char * initial_string) {
+    char * cur_letter = initial_string;
+    CharTypeMap<NodeFreq> *charNodeFreqMap = new CharTypeMap<NodeFreq>();
+    while (*cur_letter != '\0' && *cur_letter != '\n' && *cur_letter != '\r') {
+        NodeFreq *nf_ptr = charNodeFreqMap -> get(*cur_letter);
+        if(nf_ptr == NULL) {
+            Node *l = new Leaf(*cur_letter);
+            nf_ptr = new NodeFreq(l);
+            charNodeFreqMap -> set(*cur_letter, nf_ptr);
+            // можно было здесь же добавить этот же указатель в очередь с приоритетом
+        }
+        else
+            (nf_ptr -> freq)++;
+        cur_letter++;
 	}
-    return NULL;
+    return charNodeFreqMap;
+}
+
+/*
+PriorityQueue * init_pq_with_leaves(char * initial_string) {
+    // ! хорошо бы весь цикл завернуть в отдельную функцию
+    CharTypeMap<NodeFreq> *charNodeFreqMap = getCharNodeFreqMap(initial_string);
+
+    // можно при считывани букв сразу заполнять очередь с приоритетами
+    // это будет эффективнее по времени, но мне неочень нравится неявное изменение частот
+    // поэтому создание и заполнение очереди с приоритетом из словаря выделяю в отдельный цикл
+    //PriorityQueue* pq = MapToPQ(charNodeFreqMap);
+    //charNodeFreqMap.print(); // debug
+    
+    return MapToPQ(*charNodeFreqMap);
+}
+*/
+NodeFreq * makeTreeFromLeaves(PriorityQueue *pq) {
+    while(pq -> hasAtLeast2Elems()) {
+        NodeFreq *left_nf = pq -> extractMin();
+        NodeFreq *right_nf = pq -> extractMin();
+
+        Node *parent = new InnerNode(left_nf->node,right_nf->node);
+        short parent_freq = left_nf -> freq + right_nf -> freq;
+
+        NodeFreq *parent_nf = new NodeFreq(parent, parent_freq);
+        
+        // ! здесь нужно корректно удалить left_nf и right_nf
+
+        pq -> insert(parent_nf);
+    }
+    
+    return pq -> extractMin();
+}
+
+
+
+
+
+void Leaf::walk(char *cur_code, int cur_code_len, CharTypeMap<char *> *codes)  {
+    cur_code[cur_code_len] = '\0';
+    char **code_ptr_ptr = new char *;
+    *code_ptr_ptr = new char[cur_code_len];
+    std::strcpy(*code_ptr_ptr,cur_code);
+    codes -> set(letter, code_ptr_ptr);
+
+    //std::cout << "debug " << letter << ": " <<  cur_code_len << '\n';
+}  
+
+
+CharTypeMap<char *> * get_letter_encoder(Node * root) {
+    CharTypeMap<char *> *codes = new CharTypeMap<char *>;
+    
+    if(root -> is_leaf()) {
+        /*
+        char **code_ptr_ptr = new char *;
+        *code_ptr_ptr = new char[2];
+        *code_ptr_ptr[0] = '0';
+        *code_ptr_ptr[1] = '\0';
+        codes -> set(((Leaf)(*root)).letter, code_ptr_ptr);
+        */
+       char code_buffer[] = "0";
+       root -> walk(code_buffer,1,codes);
+       return codes;
+    }
+
+    
+    char code_buffer[10000];
+    root -> walk(code_buffer, 0, codes);
+    return codes;
+}
+
+
+void print_coded_string(char * initial_string, CharTypeMap<char *> *codes) {
+    
+    for(char *cur_letter = initial_string; *cur_letter != '\0' && *cur_letter != '\n' && *cur_letter != '\r'; cur_letter++) {
+        std::cout << *(codes -> get(*cur_letter));
+    }
+}
+
+int get_encoded_len(CharTypeMap<NodeFreq> *charNodeFreqMap, CharTypeMap<char *> *codes) {
+    int encoded_len = 0;
+    for(int i = 0; i < ALPHABET_SIZE; ++i) {
+        char letter = 'a' + i;
+        NodeFreq *nf = charNodeFreqMap -> get(letter); 
+        char **code = codes -> get(letter);
+        if(nf != NULL && code != NULL) {
+            encoded_len += std::strlen(*code) * nf -> freq; 
+        }
+    }
+    return encoded_len;
 }
 
 int main() {
-   
-	char initial_string[10000];
-	int is_index = 0;
-	char letter;
+    // если бы я хранил частоты в дереве,
+    // можно было бы в процессе получения кодирующего словаря
+    // получить и длину зкаодированной строки
+    // как произведение freq и cur_code_len для каждого узла 
+	char initial_string[10001];
 	
-    CharTypeMap<NodeFreq> charNodeFreqMap;
-	do {
-		scanf("%c", &letter);
-		initial_string[is_index++] = letter;
-        
+	std::cin.getline(initial_string,10001);
+    CharTypeMap<NodeFreq> *charNodeFreqMap = getCharNodeFreqMap(initial_string);
+    PriorityQueue *pq = MapToPQ(*charNodeFreqMap);
 
-        Node * newLeaf = new Leaf(letter);
-        NodeFreq nf = ;
-        charNodeFreqMap.set(letter, NodeFreq(newLeaf));
-	}
-	while(letter != '\n');
-	
-    // допустим, у нас есть отображение из букв
-	//get_nodefreqlist_of_leaves(initial_string);
-	
-    printf(initial_string);
+	//PriorityQueue *pq = init_pq_with_leaves(initial_string);
+    //pq -> debugLeavesPrint();
+
+    NodeFreq * root_nf = makeTreeFromLeaves(pq);
+    Node* root = root_nf -> node;
+
+        
+    /*
+    Leaf* lll = (Leaf *)((InnerNode *) root) -> right;
+    std::cout << "leter" << lll -> letter << '\n';
+    */
+    CharTypeMap<char *> *codes = get_letter_encoder(root);
+
+    std::cout << codes -> count_chars() << ' ' << get_encoded_len(charNodeFreqMap, codes);
+    std::cout << '\n';
+    codes -> print();
+    print_coded_string(initial_string,codes);
 }

@@ -195,7 +195,7 @@ class CharTypeMap {
         ~CharTypeMap();
 
         Type * get(char letter) {
-            return values[getIndex(letter)]; // ! возвращаю копию, но не уверен, что так надо
+            return values[getIndex(letter)]; // возвращаю копию
         }
         
         void set(char letter, Type *value) {
@@ -407,6 +407,6 @@ int main() {
     delete_Tree(root);
     delete charNodeFreqMap;
 
-    // ! нужно для CharTypeMap<char *> определен свой  деструктор
+    // для CharTypeMap<char *> определен свой  деструктор
     delete codes;
 }
